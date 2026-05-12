@@ -1,2 +1,32 @@
 # Logs
+*.log
+npm-debug.log*
+
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+build/
+dist/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Test / coverage
+coverage/
+
+# OS / editor
+.DS_Store
+.idea/
+*.swp
+
+# TypeScript / Next build info
+*.tsbuildinfo
+next-env.d.ts
+
+# Misc
 .remember/
