@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
 import { getTestDb, resetTestDb, closeTestDb, type TestDb } from "../helpers/db";
 import { InMemoryStorageClient } from "../../core/storage";
-import { uploadFixtureVersion } from "../../lib/fixtures/upload";
+import { uploadFixtureVersion, safeFileName } from "../../lib/fixtures/upload";
 import { fixtureModes, fixtureVersions } from "../../db/schema";
 
 let db: TestDb;
@@ -34,7 +34,28 @@ function newFixtureInput(overrides = {}) {
   };
 }
 
+describe("safeFileName", () => {
+  it("strips directory components and unsafe characters", () => {
+    expect(safeFileName("../../etc/passwd")).toBe("passwd");
+    expect(safeFileName("C:\\evil\\f.dfix")).toBe("f.dfix");
+    expect(safeFileName("my fixture (v2).dfix")).toBe("my_fixture__v2_.dfix");
+    expect(safeFileName("....")).toBe("file");
+    expect(safeFileName("")).toBe("file");
+  });
+});
+
 describe("uploadFixtureVersion", () => {
+  it("sanitizes a malicious .dfix filename in the storage key", async () => {
+    const r = await uploadFixtureVersion(
+      { db, storage },
+      { ...newFixtureInput(), dfix: { bytes: enc.encode("X"), fileName: "../../../evil.dfix" } },
+    );
+    if (!r.ok) throw new Error("expected ok");
+    const [v] = await db.select().from(fixtureVersions);
+    expect(v.dfixFileKey).not.toContain("..");
+    expect(v.dfixFileKey.endsWith("/evil.dfix")).toBe(true);
+  });
+
   it("creates a new fixture with version, mode, and stored file", async () => {
     const r = await uploadFixtureVersion(
       { db, storage },
