@@ -1,36 +1,98 @@
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+  NoSuchKey,
+} from "@aws-sdk/client-s3";
+import { getSignedUrl as presign } from "@aws-sdk/s3-request-presigner";
 import type { PutOptions, StorageClient } from "./types";
+import { ObjectNotFoundError } from "./types";
 
 export interface R2Config {
   accountId: string;
   accessKeyId: string;
   secretAccessKey: string;
   bucket: string;
+  /** Default TTL (seconds) for getSignedUrl. Defaults to 600. */
   signedUrlTtlSeconds?: number;
 }
 
-const NOT_IMPLEMENTED =
-  "R2StorageClient is not implemented yet — see issue #3 (Cloudflare R2 StorageClient implementation).";
+const DEFAULT_TTL_SECONDS = 600;
 
-/**
- * Cloudflare R2 (S3-compatible) StorageClient.
- * Stub only: the real implementation lands in issue #3.
- */
+async function streamToBytes(body: unknown): Promise<Uint8Array> {
+  if (body instanceof Uint8Array) return body;
+  if (
+    body &&
+    typeof (body as { transformToByteArray?: unknown }).transformToByteArray ===
+      "function"
+  ) {
+    return (body as { transformToByteArray(): Promise<Uint8Array> }).transformToByteArray();
+  }
+  const chunks: Buffer[] = [];
+  for await (const chunk of body as AsyncIterable<Uint8Array>) {
+    chunks.push(Buffer.from(chunk));
+  }
+  return new Uint8Array(Buffer.concat(chunks));
+}
+
+/** Cloudflare R2 (S3-compatible) StorageClient. */
 export class R2StorageClient implements StorageClient {
-  constructor(private readonly config: R2Config) {}
+  private readonly client: S3Client;
+  private readonly bucket: string;
+  private readonly ttl: number;
 
-  async put(_key: string, _body: Uint8Array, _options?: PutOptions): Promise<void> {
-    throw new Error(NOT_IMPLEMENTED);
+  constructor(config: R2Config, client?: S3Client) {
+    this.bucket = config.bucket;
+    this.ttl = config.signedUrlTtlSeconds ?? DEFAULT_TTL_SECONDS;
+    this.client =
+      client ??
+      new S3Client({
+        region: "auto",
+        endpoint: `https://${config.accountId}.r2.cloudflarestorage.com`,
+        credentials: {
+          accessKeyId: config.accessKeyId,
+          secretAccessKey: config.secretAccessKey,
+        },
+      });
   }
 
-  async get(_key: string): Promise<Uint8Array> {
-    throw new Error(NOT_IMPLEMENTED);
+  async put(key: string, body: Uint8Array, options?: PutOptions): Promise<void> {
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: body,
+        ContentType: options?.contentType,
+      }),
+    );
   }
 
-  async delete(_key: string): Promise<void> {
-    throw new Error(NOT_IMPLEMENTED);
+  async get(key: string): Promise<Uint8Array> {
+    try {
+      const res = await this.client.send(
+        new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
+      return await streamToBytes(res.Body);
+    } catch (err) {
+      if (err instanceof NoSuchKey || (err as { name?: string })?.name === "NoSuchKey") {
+        throw new ObjectNotFoundError(key);
+      }
+      throw err;
+    }
   }
 
-  async getSignedUrl(_key: string, _expiresInSeconds?: number): Promise<string> {
-    throw new Error(NOT_IMPLEMENTED);
+  async delete(key: string): Promise<void> {
+    await this.client.send(
+      new DeleteObjectCommand({ Bucket: this.bucket, Key: key }),
+    );
+  }
+
+  async getSignedUrl(key: string, expiresInSeconds?: number): Promise<string> {
+    return presign(
+      this.client,
+      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+      { expiresIn: expiresInSeconds ?? this.ttl },
+    );
   }
 }
