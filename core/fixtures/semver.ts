@@ -1,0 +1,48 @@
+export interface ParsedSemver {
+  major: number;
+  minor: number;
+  patch: number;
+  prerelease: string | undefined;
+}
+
+const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/;
+
+export function parseSemver(value: string): ParsedSemver | null {
+  const m = SEMVER_RE.exec(value);
+  if (!m) return null;
+  return {
+    major: Number(m[1]),
+    minor: Number(m[2]),
+    patch: Number(m[3]),
+    prerelease: m[4],
+  };
+}
+
+function comparePrerelease(a: string | undefined, b: string | undefined): -1 | 0 | 1 {
+  if (a === b) return 0;
+  // A version without a prerelease ranks higher than one with.
+  if (a === undefined) return 1;
+  if (b === undefined) return -1;
+  return a < b ? -1 : 1;
+}
+
+/** Returns -1, 0, or 1. Throws if either string is not valid semver. */
+export function compareSemver(a: string, b: string): -1 | 0 | 1 {
+  const pa = parseSemver(a);
+  const pb = parseSemver(b);
+  if (!pa || !pb) throw new Error(`Invalid semver: ${!pa ? a : b}`);
+  for (const key of ["major", "minor", "patch"] as const) {
+    if (pa[key] !== pb[key]) return pa[key] < pb[key] ? -1 : 1;
+  }
+  return comparePrerelease(pa.prerelease, pb.prerelease);
+}
+
+/** Highest valid version in the list; invalid strings are ignored. Null if none valid. */
+export function currentVersion(versions: readonly string[]): string | null {
+  let best: string | null = null;
+  for (const v of versions) {
+    if (!parseSemver(v)) continue;
+    if (best === null || compareSemver(v, best) > 0) best = v;
+  }
+  return best;
+}
