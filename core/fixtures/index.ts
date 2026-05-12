@@ -10,3 +10,4 @@ export {
   type FixtureModeInput,
   type FieldError,
 } from "./validation";
+export { slugify } from "./slug";
