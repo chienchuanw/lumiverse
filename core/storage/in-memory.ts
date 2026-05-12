@@ -22,4 +22,9 @@ export class InMemoryStorageClient implements StorageClient {
   async getSignedUrl(key: string, expiresInSeconds = 600): Promise<string> {
     return `memory://${encodeURI(key)}?expires=${expiresInSeconds}`;
   }
+
+  /** All stored keys. Useful for assertions in tests. */
+  keys(): string[] {
+    return [...this.objects.keys()];
+  }
 }
