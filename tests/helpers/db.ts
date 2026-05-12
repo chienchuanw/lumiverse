@@ -26,7 +26,7 @@ let migrated = false;
 /** Returns a migrated test database, running migrations once per process. */
 export async function getTestDb(): Promise<TestDb> {
   if (!db) {
-    client = postgres(connectionString, { max: 1 });
+    client = postgres(connectionString, { max: 1, onnotice: () => {} });
     db = drizzle(client, { schema });
   }
   if (!migrated) {
