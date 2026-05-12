@@ -45,6 +45,12 @@ describe("compareSemver", () => {
     expect(compareSemver("1.0.0", "1.0.0-rc.1")).toBe(1);
     expect(compareSemver("1.0.0-alpha", "1.0.0-beta")).toBe(-1);
   });
+
+  it("compares prerelease identifiers segment-wise with numeric awareness", () => {
+    expect(compareSemver("1.0.0-rc.2", "1.0.0-rc.10")).toBe(-1);
+    expect(compareSemver("1.0.0-rc.1", "1.0.0-rc.1.1")).toBe(-1);
+    expect(compareSemver("1.0.0-alpha.1", "1.0.0-alpha.beta")).toBe(-1);
+  });
 });
 
 describe("currentVersion", () => {
