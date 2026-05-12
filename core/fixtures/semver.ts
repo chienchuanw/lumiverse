@@ -18,12 +18,34 @@ export function parseSemver(value: string): ParsedSemver | null {
   };
 }
 
+function compareIdentifier(a: string, b: string): -1 | 0 | 1 {
+  const aNum = /^\d+$/.test(a);
+  const bNum = /^\d+$/.test(b);
+  if (aNum && bNum) {
+    const da = Number(a);
+    const db = Number(b);
+    return da === db ? 0 : da < db ? -1 : 1;
+  }
+  // Numeric identifiers always rank lower than alphanumeric ones.
+  if (aNum) return -1;
+  if (bNum) return 1;
+  return a === b ? 0 : a < b ? -1 : 1;
+}
+
 function comparePrerelease(a: string | undefined, b: string | undefined): -1 | 0 | 1 {
   if (a === b) return 0;
   // A version without a prerelease ranks higher than one with.
   if (a === undefined) return 1;
   if (b === undefined) return -1;
-  return a < b ? -1 : 1;
+  const pa = a.split(".");
+  const pb = b.split(".");
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    if (i >= pa.length) return -1; // shorter prerelease ranks lower
+    if (i >= pb.length) return 1;
+    const c = compareIdentifier(pa[i], pb[i]);
+    if (c !== 0) return c;
+  }
+  return 0;
 }
 
 /** Returns -1, 0, or 1. Throws if either string is not valid semver. */
