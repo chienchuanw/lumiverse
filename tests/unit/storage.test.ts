@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { runStorageClientContract } from "../../core/storage/storage.contract";
 import { InMemoryStorageClient } from "../../core/storage/in-memory";
-import { getStorageClient } from "../../core/storage";
+import { getStorageClient, resetStorageClient } from "../../core/storage";
 import { R2StorageClient } from "../../core/storage/r2";
 
 runStorageClientContract("InMemoryStorageClient", () => new InMemoryStorageClient());
@@ -18,6 +18,7 @@ describe("getStorageClient", () => {
   beforeEach(() => {
     saved = Object.fromEntries(r2Vars.map((k) => [k, process.env[k]]));
     for (const k of r2Vars) delete process.env[k];
+    resetStorageClient();
   });
 
   afterEach(() => {
@@ -25,6 +26,7 @@ describe("getStorageClient", () => {
       if (saved[k] === undefined) delete process.env[k];
       else process.env[k] = saved[k];
     }
+    resetStorageClient();
   });
 
   it("returns an in-memory client when R2 env vars are absent", () => {
