@@ -25,3 +25,8 @@ export function assertCanWrite(session: SessionLike | null | undefined): void {
   if (!isAuthEnabled()) return;
   if (!session?.user) throw new UnauthorizedError();
 }
+
+/** The authenticated user's id, or undefined when there is no logged-in user. */
+export function sessionUserId(session: SessionLike | null | undefined): string | undefined {
+  return session?.user && "id" in session.user ? (session.user as SessionUser).id : undefined;
+}

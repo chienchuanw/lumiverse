@@ -1,21 +1,13 @@
 import { getDb } from "@/db";
 import { getStorageClient } from "@/core/storage";
 import { getSessionOrNull } from "@/lib/auth/session";
-import { assertCanWrite, UnauthorizedError, type SessionUser } from "@/lib/auth/guard";
+import { assertCanWrite, sessionUserId, UnauthorizedError } from "@/lib/auth/guard";
 import {
+  fileToInput,
   maxUploadBytes,
   uploadFixtureVersion,
-  type UploadFileInput,
   type UploadFixtureVersionInput,
 } from "@/lib/fixtures/upload";
-
-async function fileToInput(file: File): Promise<UploadFileInput> {
-  return {
-    bytes: new Uint8Array(await file.arrayBuffer()),
-    fileName: file.name,
-    contentType: file.type || undefined,
-  };
-}
 
 function str(form: FormData, key: string): string | undefined {
   const v = form.get(key);
@@ -87,8 +79,7 @@ export async function POST(request: Request) {
   }
   const images = form.getAll("previewImages").filter((v): v is File => v instanceof File);
 
-  const createdBy =
-    session?.user && "id" in session.user ? (session.user as SessionUser).id : undefined;
+  const createdBy = sessionUserId(session);
 
   const input: UploadFixtureVersionInput = {
     fixtureId: str(form, "fixtureId"),

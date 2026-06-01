@@ -2,22 +2,14 @@ import { redirect } from "next/navigation";
 import { getDb } from "@/db";
 import { getStorageClient } from "@/core/storage";
 import { getSessionOrNull } from "@/lib/auth/session";
-import { assertCanWrite, type SessionUser } from "@/lib/auth/guard";
+import { assertCanWrite, sessionUserId } from "@/lib/auth/guard";
 import {
+  fileToInput,
   maxUploadBytes,
   uploadFixtureVersion,
-  type UploadFileInput,
   type UploadModeInput,
 } from "@/lib/fixtures/upload";
 import { ModeRows } from "./mode-rows";
-
-async function toFileInput(file: File): Promise<UploadFileInput> {
-  return {
-    bytes: new Uint8Array(await file.arrayBuffer()),
-    fileName: file.name,
-    contentType: file.type || undefined,
-  };
-}
 
 /** Zip the paired modeName/modeChannelCount fields into mode rows, dropping blanks. */
 function parseModeRows(formData: FormData): UploadModeInput[] {
@@ -31,15 +23,15 @@ function parseModeRows(formData: FormData): UploadModeInput[] {
 export default function UploadPage(props: { searchParams: Promise<{ error?: string }> }) {
   async function upload(formData: FormData): Promise<void> {
     "use server";
-    assertCanWrite(await getSessionOrNull());
+    // Resolve the session once: the guard and `createdBy` both need it.
+    const session = await getSessionOrNull();
+    assertCanWrite(session);
 
     const dfix = formData.get("dfix");
     if (!(dfix instanceof File) || dfix.size === 0) redirect("/upload?error=dfix-required");
     if ((dfix as File).size > maxUploadBytes()) redirect("/upload?error=413");
-    const file = await toFileInput(dfix as File);
-    const session = await getSessionOrNull();
-    const createdBy =
-      session?.user && "id" in session.user ? (session.user as SessionUser).id : undefined;
+    const file = await fileToInput(dfix as File);
+    const createdBy = sessionUserId(session);
 
     const tags = String(formData.get("tags") ?? "").split(",").map((t) => t.trim()).filter(Boolean);
     const compat = String(formData.get("depenceCompatibility") ?? "").split(",").map((t) => t.trim()).filter(Boolean);
@@ -47,7 +39,7 @@ export default function UploadPage(props: { searchParams: Promise<{ error?: stri
     const imageFiles = formData
       .getAll("previewImages")
       .filter((v): v is File => v instanceof File && v.size > 0);
-    const previewImages = await Promise.all(imageFiles.map(toFileInput));
+    const previewImages = await Promise.all(imageFiles.map(fileToInput));
 
     const result = await uploadFixtureVersion(
       { db: getDb(), storage: getStorageClient() },
