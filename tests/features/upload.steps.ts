@@ -97,4 +97,37 @@ describeFeature(feature, ({ Scenario }) => {
       expect(await versionCountFor("Clay Paky", "Sharpy")).toBe(n);
     });
   });
+
+  Scenario("The same .dfix under a different fixture is accepted with a warning", ({ Given, And, When, Then }) => {
+    let response: Response;
+
+    Given("an empty fixture catalogue", async () => {
+      await resetTestDb();
+      resetStorageClient();
+    });
+
+    And(
+      `{string} / {string} version {string} was uploaded from a .dfix with contents {string}`,
+      async (_: unknown, manufacturer: string, name: string, version: string, contents: string) => {
+        const r = await postUpload({ manufacturer, name, version }, contents);
+        expect(r.status).toBe(201);
+      },
+    );
+
+    When(
+      `I upload {string} / {string} version {string} from a .dfix with contents {string}`,
+      async (_: unknown, manufacturer: string, name: string, version: string, contents: string) => {
+        response = await postUpload({ manufacturer, name, version }, contents);
+      },
+    );
+
+    Then(`the upload succeeds with status {int}`, (_: unknown, status: number) => {
+      expect(response.status).toBe(status);
+    });
+
+    And(`the response warns that the file is byte-identical to another fixture`, async () => {
+      const body = (await response.json()) as { warnings?: string[] };
+      expect(String(body.warnings?.join(" "))).toMatch(/identical/i);
+    });
+  });
 });

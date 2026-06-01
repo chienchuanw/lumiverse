@@ -1,8 +1,12 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
 import { getTestDb, resetTestDb, closeTestDb, type TestDb } from "../helpers/db";
 import { InMemoryStorageClient } from "../../core/storage";
-import { uploadFixtureVersion, safeFileName } from "../../lib/fixtures/upload";
-import { fixtureModes, fixtureVersions } from "../../db/schema";
+import {
+  uploadFixtureVersion,
+  safeFileName,
+  disambiguateSlug,
+} from "../../lib/fixtures/upload";
+import { fixtureModes, fixtureVersions, fixtures, manufacturers } from "../../db/schema";
 
 let db: TestDb;
 let storage: InMemoryStorageClient;
@@ -44,7 +48,54 @@ describe("safeFileName", () => {
   });
 });
 
+describe("disambiguateSlug", () => {
+  it("returns the base when it is free", () => {
+    expect(disambiguateSlug("robe", [])).toBe("robe");
+  });
+  it("appends an incrementing counter when the base is taken", () => {
+    expect(disambiguateSlug("robe", ["robe"])).toBe("robe-2");
+    expect(disambiguateSlug("robe", ["robe", "robe-2"])).toBe("robe-3");
+  });
+});
+
 describe("uploadFixtureVersion", () => {
+  it("disambiguates the manufacturer slug when two names slugify the same", async () => {
+    const a = await uploadFixtureVersion({ db, storage }, newFixtureInput({ manufacturer: "Robe", name: "A" }));
+    const b = await uploadFixtureVersion(
+      { db, storage },
+      newFixtureInput({ manufacturer: "ROBE", name: "B", dfix: dfix("B") }),
+    );
+    expect(a.ok && b.ok).toBe(true);
+    const slugs = (await db.select().from(manufacturers)).map((m) => m.slug).sort();
+    expect(slugs).toEqual(["robe", "robe-2"]);
+  });
+
+  it("disambiguates the fixture slug within a manufacturer", async () => {
+    await uploadFixtureVersion({ db, storage }, newFixtureInput({ name: "Mega Pointe", dfix: dfix("1") }));
+    await uploadFixtureVersion({ db, storage }, newFixtureInput({ name: "Mega-Pointe", dfix: dfix("2") }));
+    const slugs = (await db.select().from(fixtures)).map((f) => f.slug).sort();
+    expect(slugs).toEqual(["mega-pointe", "mega-pointe-2"]);
+    // Both belong to the single, reused manufacturer.
+    expect(await db.select().from(manufacturers)).toHaveLength(1);
+  });
+
+  it("rejects an oversized .dfix with 413 and writes nothing", async () => {
+    process.env.MAX_UPLOAD_BYTES = "3";
+    try {
+      const r = await uploadFixtureVersion(
+        { db, storage },
+        newFixtureInput({ dfix: dfix("WAY TOO BIG") }),
+      );
+      expect(r.ok).toBe(false);
+      if (r.ok) throw new Error("expected failure");
+      expect(r.status).toBe(413);
+      expect(await db.select().from(fixtureVersions)).toHaveLength(0);
+      expect(storage.keys()).toEqual([]);
+    } finally {
+      delete process.env.MAX_UPLOAD_BYTES;
+    }
+  });
+
   it("sanitizes a malicious .dfix filename in the storage key", async () => {
     const r = await uploadFixtureVersion(
       { db, storage },

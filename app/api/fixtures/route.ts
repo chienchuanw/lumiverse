@@ -3,6 +3,7 @@ import { getStorageClient } from "@/core/storage";
 import { getSessionOrNull } from "@/lib/auth/session";
 import { assertCanWrite, UnauthorizedError, type SessionUser } from "@/lib/auth/guard";
 import {
+  maxUploadBytes,
   uploadFixtureVersion,
   type UploadFileInput,
   type UploadFixtureVersionInput,
@@ -28,21 +29,32 @@ function strList(form: FormData, key: string): string[] | undefined {
   return all.length === 1 ? all[0].split(",").map((s) => s.trim()).filter(Boolean) : all;
 }
 
-function parseModes(form: FormData): UploadFixtureVersionInput["modes"] {
+type ParsedModes =
+  | { ok: true; modes: UploadFixtureVersionInput["modes"] }
+  | { ok: false };
+
+/**
+ * Parses the optional `modes` field. An absent/blank field is fine (no modes);
+ * a present-but-unparseable field is a client error, surfaced as 400 rather
+ * than dropped silently.
+ */
+function parseModes(form: FormData): ParsedModes {
   const raw = form.get("modes");
-  if (typeof raw !== "string" || raw.trim() === "") return undefined;
+  if (typeof raw !== "string" || raw.trim() === "") return { ok: true, modes: undefined };
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return undefined;
-    return parsed as UploadFixtureVersionInput["modes"];
+    if (!Array.isArray(parsed)) return { ok: false };
+    return { ok: true, modes: parsed as UploadFixtureVersionInput["modes"] };
   } catch {
-    return undefined;
+    return { ok: false };
   }
 }
 
 export async function POST(request: Request) {
+  // Resolve the session once: the guard and `createdBy` both need it.
+  const session = await getSessionOrNull();
   try {
-    assertCanWrite(await getSessionOrNull());
+    assertCanWrite(session);
   } catch (e) {
     if (e instanceof UnauthorizedError) {
       return Response.json({ error: e.message }, { status: 401 });
@@ -61,9 +73,20 @@ export async function POST(request: Request) {
   if (!(dfixFile instanceof File)) {
     return Response.json({ error: "A .dfix file is required." }, { status: 400 });
   }
+  // Reject oversized uploads before buffering the file into memory.
+  const maxBytes = maxUploadBytes();
+  if (dfixFile.size > maxBytes) {
+    return Response.json(
+      { error: `The .dfix file exceeds the ${maxBytes}-byte limit.` },
+      { status: 413 },
+    );
+  }
+  const modes = parseModes(form);
+  if (!modes.ok) {
+    return Response.json({ error: "The 'modes' field must be a JSON array." }, { status: 400 });
+  }
   const images = form.getAll("previewImages").filter((v): v is File => v instanceof File);
 
-  const session = await getSessionOrNull();
   const createdBy =
     session?.user && "id" in session.user ? (session.user as SessionUser).id : undefined;
 
@@ -77,7 +100,7 @@ export async function POST(request: Request) {
     version: str(form, "version") ?? "",
     changelog: str(form, "changelog"),
     depenceCompatibility: strList(form, "depenceCompatibility"),
-    modes: parseModes(form),
+    modes: modes.modes,
     dfix: await fileToInput(dfixFile),
     previewImages: await Promise.all(images.map(fileToInput)),
     createdBy,
