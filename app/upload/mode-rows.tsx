@@ -1,8 +1,6 @@
 "use client";
 
-import { useState } from "react";
-
-let nextKey = 0;
+import { useRef, useState } from "react";
 
 /**
  * Repeatable mode rows. Each row submits a paired `modeName` / `modeChannelCount`
@@ -10,7 +8,8 @@ let nextKey = 0;
  * blank are ignored server-side.
  */
 export function ModeRows() {
-  const [keys, setKeys] = useState<number[]>([nextKey++]);
+  const nextKey = useRef(1);
+  const [keys, setKeys] = useState<number[]>([0]);
 
   return (
     <fieldset>
@@ -32,7 +31,7 @@ export function ModeRows() {
           )}
         </div>
       ))}
-      <button type="button" onClick={() => setKeys((ks) => [...ks, nextKey++])}>
+      <button type="button" onClick={() => setKeys((ks) => [...ks, nextKey.current++])}>
         Add mode
       </button>
     </fieldset>

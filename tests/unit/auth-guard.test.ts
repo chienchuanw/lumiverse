@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { assertCanWrite, UnauthorizedError } from "../../lib/auth/guard";
+import { assertCanWrite, sessionUserId, UnauthorizedError } from "../../lib/auth/guard";
 
 const original = process.env.AUTH_ENABLED;
 afterEach(() => {
@@ -23,5 +23,18 @@ describe("assertCanWrite", () => {
   it("allows writes when auth is enabled and a session is present", () => {
     process.env.AUTH_ENABLED = "true";
     expect(() => assertCanWrite(session)).not.toThrow();
+  });
+});
+
+describe("sessionUserId", () => {
+  it("returns the id of a logged-in user", () => {
+    expect(sessionUserId(session)).toBe("u1");
+  });
+
+  it("returns undefined for no session, no user, or a user without an id", () => {
+    expect(sessionUserId(null)).toBeUndefined();
+    expect(sessionUserId(undefined)).toBeUndefined();
+    expect(sessionUserId({ user: null })).toBeUndefined();
+    expect(sessionUserId({ user: { email: "a@b.c" } })).toBeUndefined();
   });
 });
